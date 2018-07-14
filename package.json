@@ -1,0 +1,27 @@
+{
+  "name": "line2chunk",
+  "version": "1.0.0",
+  "description": "pipe in timestamped lines, output in chunks separated by a set time interval",
+  "main": "line2Chunk.js",
+  "dependencies": {
+    "websocket-stream": "^5.1.2",
+    "ws": "^5.1.1"
+  },
+  "devDependencies": {},
+  "scripts": {
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pollere/line2chunk.git"
+  },
+  "keywords": [
+    "pping",
+    "ppviz"
+  ],
+  "author": "Kathleen Nichols",
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/pollere/line2chunk/issues"
+  },
+  "homepage": "https://github.com/pollere/line2chunk#readme"
+}
