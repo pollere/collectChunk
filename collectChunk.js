@@ -19,6 +19,8 @@
     it from the standard input and pipe it out in chunks of that are spaced
     at timeSpan intervals, timeSpan being a millisecond value sent from the
     downstream piped web page. 
+    To serve multiple clients, need to attach multiple writable streams to
+    the stdin-to-transform pipeline and resolve the interval choice.
 
     example usage: pping -i interface -m | node.js line2Chunk.js
         OR cat [some file of ppings] | node.js line2Chunk.js 
@@ -63,7 +65,6 @@ function  sendInterval (ts) {
     //no more input and nothing left to send
     if(!lineArr.length && EOI) {
         clearInterval(intervalTimer);
-        intervalTimer = undefined;
         collectIntervalFlushCB();
     }
 };
@@ -84,9 +85,7 @@ async function resetInterval() {
 }
 
 
-let collectInterval;
-function newCollector() {
-    let c = new Transform({
+let collectInterval = new Transform({
     readableObjectMode: true,
 
     transform(chunk, encoding, callback) {
@@ -114,11 +113,10 @@ function newCollector() {
         collectIntervalFlushCB = callback.bind(this);
     }
 });
-    c.setEncoding('utf8');    //Readable stream reads as string
-    return c;
-}
 
-    let activeStream = false;
+collectInterval.setEncoding('utf8');    //Readable stream reads as string
+
+let activeStream = false;
 
 let wss = new WebSocketServer({
     host: '127.0.0.1',
@@ -126,6 +124,10 @@ let wss = new WebSocketServer({
     perMessageDeflate: false,
     verifyClient: function( info ) { return !activeStream; },
     maxPayload: blockSize});
+
+    //set up first part of the pipeline
+    //collectInterval's writeable should pause when readable is full
+    let pipeInterval = process.stdin.pipe(collectInterval);
 
 wss.on('connection', function (ws) {
     let stream;
@@ -135,15 +137,16 @@ wss.on('connection', function (ws) {
         if(cmd.length === 2 && cmd[0] === 'timespan') {
             timeSpan = parseInt(cmd[1]);
         }
-        //if first msg set up the stream and pipes
+        //if first msg set up the client stream and pipe
         if(!stream) {
             stream = WebSocketStream(ws, {objectMode: true});
             stream.setEncoding('utf8');
             activeStream = true;
-            collectInterval = newCollector();
+            pipeInterval.pipe(stream);
             sendInterval(collectInterval); //send what we have so far
             //start the send interval timer
             intervalTimer = setInterval(sendInterval,timeSpan,collectInterval);
+/*
             pipeline( process.stdin, collectInterval, stream,
                       (err) => {
                           if (err) {
@@ -154,15 +157,16 @@ wss.on('connection', function (ws) {
 //                          this.close(1000, 'done');
 //                          process.exit(0);
                       });
+*/
         }
-        else if(intervalTimer) {
-          //new interal timespan
+        else if(intervalTimer) {    //new interal timespan
             resetInterval();
         }
     });
 
     ws.on('close', function(connection) {
         console.log((new Date()) + ": disconnected");
+        pipeInterval.unpipe(stream);
         activeStream = false;
         stream = undefined;
         clearInterval(intervalTimer);
