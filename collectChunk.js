@@ -1,5 +1,5 @@
 /* 
-    line2Chunk - input piped from standard io, creates localhost server
+    collectChunk - input piped from standard io, creates localhost server
 
     Copyright (c) 2018 Kathleen Nichols, Pollere, Inc.
 
@@ -50,7 +50,7 @@ let collectIntervalFlushCB; //so flush() callback() routine can be deferred
 let lastTime;       //start of last send interval in input stream time
 let frag = "";      //to keep any line fragment
 
-//send all the lines in the buffer
+//send all the lines in the line array
 function  sendInterval (ts) {
     lastTime = Date.now();
     let outString = '';
@@ -63,7 +63,7 @@ function  sendInterval (ts) {
     //no more input and nothing left to send
     if(!lineArr.length && EOI) {
         clearInterval(intervalTimer);
-        intervalTimer = null;
+        intervalTimer = undefined;
         collectIntervalFlushCB();
     }
 };
@@ -84,7 +84,9 @@ async function resetInterval() {
 }
 
 
-let collectInterval = new Transform({
+let collectInterval;
+function newCollector() {
+    let c = new Transform({
     readableObjectMode: true,
 
     transform(chunk, encoding, callback) {
@@ -103,14 +105,6 @@ let collectInterval = new Transform({
                 }
             });
 
-        //if this is the first chunk received, compute end of send interval
-        if(!lastTime) {
-            //start of the send interval
-            lastTime = Date.now();
-            sendInterval(collectInterval); //send what we have so far
-            //start the send interval timer
-            intervalTimer = setInterval(sendInterval,timeSpan,collectInterval);
-        }
         callback();
     }
 ,
@@ -120,13 +114,17 @@ let collectInterval = new Transform({
         collectIntervalFlushCB = callback.bind(this);
     }
 });
+    c.setEncoding('utf8');    //Readable stream reads as string
+    return c;
+}
 
-    collectInterval.setEncoding('utf8');    //Readable stream reads as string
+    let activeStream = false;
 
 let wss = new WebSocketServer({
     host: '127.0.0.1',
     port: 8080,
     perMessageDeflate: false,
+    verifyClient: function( info ) { return !activeStream; },
     maxPayload: blockSize});
 
 wss.on('connection', function (ws) {
@@ -141,6 +139,11 @@ wss.on('connection', function (ws) {
         if(!stream) {
             stream = WebSocketStream(ws, {objectMode: true});
             stream.setEncoding('utf8');
+            activeStream = true;
+            collectInterval = newCollector();
+            sendInterval(collectInterval); //send what we have so far
+            //start the send interval timer
+            intervalTimer = setInterval(sendInterval,timeSpan,collectInterval);
             pipeline( process.stdin, collectInterval, stream,
                       (err) => {
                           if (err) {
@@ -148,13 +151,20 @@ wss.on('connection', function (ws) {
                           } else {
                               console.log('EOF');
                           }
-                          this.close(1000, 'done');
-                          process.exit(0);
+//                          this.close(1000, 'done');
+//                          process.exit(0);
                       });
         }
         else if(intervalTimer) {
           //new interal timespan
             resetInterval();
         }
+    });
+
+    ws.on('close', function(connection) {
+        console.log((new Date()) + ": disconnected");
+        activeStream = false;
+        stream = undefined;
+        clearInterval(intervalTimer);
     });
 });
