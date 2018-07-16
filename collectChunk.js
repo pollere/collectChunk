@@ -15,12 +15,13 @@
     with this program; if not, write to the Free Software Foundation, Inc.,
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-    This is a nodejs program to collect line-by-line input that is piped into
-    it from the standard input and pipe it out in chunks of that are spaced
-    at timeSpan intervals, timeSpan being a millisecond value sent from the
-    downstream piped web page. 
-    To serve multiple clients, need to attach multiple writable streams to
-    the stdin-to-transform pipeline and resolve the interval choice.
+    This is a nodejs program to collect line-by-line input piped into
+    it from the standard input, collects it into chunks of lines that are
+    are spaced at timeSpan intervals, and piped through a websocket to a
+    client web page. timeSpan is a millisecond value sent from the
+    downstream piped web page. This version only serves one client at a
+    time, but to serve multiple clients, attach multiple writable streams to
+    the stdin-to-transform pipeline and resolve the timeSpan choice. (future)
 
     example usage: pping -i interface -m | node.js line2Chunk.js
         OR cat [some file of ppings] | node.js line2Chunk.js 
@@ -50,7 +51,7 @@ let intervalTimer;  //output chunk timer
 let EOI = false;    //end of input flag
 let collectIntervalFlushCB; //so flush() callback() routine can be deferred
 let lastTime;       //start of last send interval in input stream time
-let frag = "";      //to keep any line fragment
+let frag = "";      //to preserve any line fragment for next chunk
 
 //send all the lines in the line array
 function  sendInterval (ts) {
@@ -70,8 +71,8 @@ function  sendInterval (ts) {
 };
 
 /*web client changed the message chunk spacing
-    A shorter timeSpan can lead to additional lag with this approach.
-    Could send a one-time large chunk on change to preserve lag.
+  A shorter timeSpan can lead to additional lag with this approach.
+  Could send a one-time large chunk on change to preserve lag.
 */
 async function resetInterval() {
     clearInterval(intervalTimer);
@@ -83,7 +84,6 @@ async function resetInterval() {
     sendInterval(collectInterval);
     intervalTimer = setInterval(sendInterval, timeSpan, collectInterval);
 }
-
 
 let collectInterval = new Transform({
     readableObjectMode: true,
@@ -105,8 +105,8 @@ let collectInterval = new Transform({
             });
 
         callback();
-    }
-,
+    },
+
     //set EOI indicator, delay the end event for the Readable stream(output)
     flush(callback) {
         EOI = true;
@@ -116,7 +116,7 @@ let collectInterval = new Transform({
 
 collectInterval.setEncoding('utf8');    //Readable stream reads as string
 
-let activeStream = false;
+let activeStream = false;       //only accepting one at a time
 
 let wss = new WebSocketServer({
     host: '127.0.0.1',
@@ -125,9 +125,9 @@ let wss = new WebSocketServer({
     verifyClient: function( info ) { return !activeStream; },
     maxPayload: blockSize});
 
-    //set up first part of the pipeline
+    //set up first (persistent) part of the pipeline
     //collectInterval's writeable should pause when readable is full
-    let pipeInterval = process.stdin.pipe(collectInterval);
+    const pipeInterval = process.stdin.pipe(collectInterval);
 
 wss.on('connection', function (ws) {
     let stream;
@@ -146,18 +146,6 @@ wss.on('connection', function (ws) {
             sendInterval(collectInterval); //send what we have so far
             //start the send interval timer
             intervalTimer = setInterval(sendInterval,timeSpan,collectInterval);
-/*
-            pipeline( process.stdin, collectInterval, stream,
-                      (err) => {
-                          if (err) {
-                              console.error("pipeline failed:", err);
-                          } else {
-                              console.log('EOF');
-                          }
-//                          this.close(1000, 'done');
-//                          process.exit(0);
-                      });
-*/
         }
         else if(intervalTimer) {    //new interal timespan
             resetInterval();
