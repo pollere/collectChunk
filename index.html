@@ -2,7 +2,7 @@
 <html>
 <head lang='en'>
     <meta charset='utf-8'>
-    <title>Line Chunker Client Test</title>
+    <title>Chunker Client Test</title>
     <style type='text/css'>
         html {
             overflow-y: scroll;
@@ -38,8 +38,9 @@
         }
         pre.textContent = pre.textContent.concat(msg.data);
         let chunk = msg.data.split(/^/m);
-        console.log('msg of %d bytes, %d lines (%d so far)', msg.data.length,
-		    chunk.length, lines += chunk.length);
+        console.log('msg of %d bytes, %d lines (%d so far), last: %s',
+            msg.data.length, chunk.length, lines += chunk.length,
+                chunk[chunk.length-1]);
         if(++cnt === 2) {
             conn.send('timespan 1000', tserr);
             console.log('changed timespan');

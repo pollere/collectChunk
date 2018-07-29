@@ -8,8 +8,10 @@ from its input stream and sends them on a websocket at a regular interval
 client web page (defaults to 1 sec).  The timeSpan can be changed by
 the consuming web client.
 
-collectChunk can be used to "chunk" any line-by-line output
+collectChunk can be used to "chunk" any line-by-line piped
 stream into chunks sent at some time span specified by the client.
+For piping from a file, line2Chunk might be better since collectChunk
+sends everything it has when the timer goes off.
 
 ## Usage
 
@@ -41,6 +43,7 @@ sophisticated client viewers.
 
 `pping` at https://github/pollere/pping.
 `ppviz` at https://github/pollere/ppviz.
+`line2Chunk` at https://github/pollere/line2Chunk.
 
 ## Author
 

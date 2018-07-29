@@ -52,16 +52,23 @@ let EOI = false;    //end of input flag
 let collectIntervalFlushCB; //so flush() callback() routine can be deferred
 let lastTime;       //start of last send interval in input stream time
 let frag = "";      //to preserve any line fragment for next chunk
+let ok = true;      //ok to push/write
 
 //send all the lines in the line array
 function  sendInterval (ts) {
+    if(!ok)
+        return;     //waiting for empty buffer (drain event)
     lastTime = Date.now();
     let outString = '';
-    while(lineArr.length) { 
+    while(lineArr.length && 2*outString.length < 0.9*blockSize) { 
         outString += lineArr.shift();
     }
     if(outString.length) {
-        ts.push(outString);
+        ok = ts.push(outString);
+    }
+    if(!ok) {
+        ts.once('drain', () => { ok=true;
+                               sendInterval(collectInterval) });
     }
     //no more input and nothing left to send
     if(!lineArr.length && EOI) {
@@ -122,8 +129,9 @@ let wss = new WebSocketServer({
     host: '127.0.0.1',
     port: 8080,
     perMessageDeflate: false,
-    verifyClient: function( info ) { return !activeStream; },
-    maxPayload: blockSize});
+    verifyClient: function( info ) { return !activeStream; }
+//  ,  maxPayload: blockSize
+    });
 
     //set up first (persistent) part of the pipeline
     //collectInterval's writeable should pause when readable is full
